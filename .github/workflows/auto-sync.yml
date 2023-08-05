@@ -16,3 +16,6 @@ jobs:
           base: develop
           head: develop
           token: ${{ secrets.TOKEN }}
+          auto_approve: true
+          auto_merge: true
+          ignore_fail: true
