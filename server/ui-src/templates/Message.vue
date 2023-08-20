@@ -6,6 +6,7 @@ import Tags from "bootstrap5-tags"
 import Attachments from './Attachments.vue'
 import Headers from './Headers.vue'
 import HTMLCheck from './MessageHTMLCheck.vue'
+import LinkCheck from './MessageLinkCheck.vue'
 
 export default {
 	props: {
@@ -18,6 +19,7 @@ export default {
 		Attachments,
 		Headers,
 		HTMLCheck,
+		LinkCheck,
 	},
 
 	mixins: [commonMixins],
@@ -33,6 +35,7 @@ export default {
 			loadHeaders: false,
 			htmlScore: false,
 			htmlScoreColor: false,
+			linkCheckErrors: false,
 			showMobileButtons: false,
 			scaleHTMLPreview: 'display',
 			// keys names match bootstrap icon names 
@@ -45,39 +48,15 @@ export default {
 	},
 
 	watch: {
-		// handle changes to the URL messageID
-		message: {
-			handler() {
-				let self = this
-				self.showTags = false
-				self.canSaveTags = false
-				self.messageTags = self.message.Tags
-				self.allTags = self.existingTags
-				self.loadHeaders = false
-				self.scaleHTMLPreview = 'display' // default view
-				// delay to select first tab and add HTML highlighting (prev/next)
-				self.$nextTick(function () {
-					self.renderUI()
-					self.showTags = true
-					self.$nextTick(function () {
-						Tags.init("select[multiple]")
-						window.setTimeout(function () {
-							self.canSaveTags = true
-						}, 200)
-					})
-				})
-			},
-			// force eager callback execution
-			immediate: true
-		},
 		messageTags() {
-			// save changes to tags
 			if (this.canSaveTags) {
+				// save changes to tags
 				this.saveTags()
 			}
 		},
-		scaleHTMLPreview() {
-			if (this.scaleHTMLPreview == 'display') {
+
+		scaleHTMLPreview(v) {
+			if (v == 'display') {
 				let self = this
 				window.setTimeout(function () {
 					self.resizeIFrames()
@@ -91,6 +70,9 @@ export default {
 		self.showTags = false
 		self.canSaveTags = false
 		self.allTags = self.existingTags
+		self.messageTags = self.message.Tags
+		self.renderUI()
+
 		window.addEventListener("resize", self.resizeIFrames)
 
 		let headersTab = document.getElementById('nav-headers-tab')
@@ -108,6 +90,7 @@ export default {
 		self.$nextTick(function () {
 			self.$nextTick(function () {
 				Tags.init('select[multiple]')
+				// delay tag change detection to allow Tags to load
 				window.setTimeout(function () {
 					self.canSaveTags = true
 				}, 200)
@@ -115,19 +98,16 @@ export default {
 		})
 	},
 
-	unmounted: function () {
-		window.removeEventListener("resize", this.resizeIFrames)
-	},
-
 	methods: {
 		isHTMLTabSelected: function () {
 			this.showMobileButtons = this.$refs.navhtml
 				&& this.$refs.navhtml.classList.contains('active')
 		},
+
 		renderUI: function () {
 			let self = this
 
-			// click the first non-disabled tab
+			// activate the first non-disabled tab
 			document.querySelector('#nav-tab button:not([disabled])').click()
 			document.activeElement.blur() // blur focus
 			document.getElementById('message-view').scrollTop = 0
@@ -219,7 +199,7 @@ export default {
 			let html = s
 
 			// full links with http(s)
-			let re = /(\b(https?|ftp):\/\/[\-\w@:%_\+.~#?,&\/\/=;]+)\b/gim
+			let re = /(\b(https?|ftp):\/\/[\-\w@:%_\+'!.~#?,&\/\/=;]+)/gim
 			html = html.replace(re, '˱˱˱a href=ˠˠˠ$&ˠˠˠ target=_blank rel=noopener˲˲˲$&˱˱˱/a˲˲˲')
 
 			// plain www links without https?:// prefix
@@ -314,7 +294,7 @@ export default {
 							<td>{{ messageDate(message.Date) }}</td>
 						</tr>
 
-						<tr class="small" v-if="showTags">
+						<tr class="small">
 							<th>Tags</th>
 							<td>
 								<select class="form-select small tag-selector" v-model="messageTags" multiple
@@ -326,7 +306,7 @@ export default {
 									<!-- you need at least one option with the placeholder -->
 									<option v-for="t in allTags" :value="t">{{ t }}</option>
 								</select>
-								<div class="invalid-feedback">Please select a valid tag.</div>
+								<div class="invalid-feedback">Invalid tag name</div>
 							</td>
 						</tr>
 					</tbody>
@@ -344,15 +324,31 @@ export default {
 
 		<nav>
 			<div class="nav nav-tabs my-3" id="nav-tab" role="tablist">
-				<button class="nav-link" id="nav-html-tab" data-bs-toggle="tab" data-bs-target="#nav-html" type="button"
-					role="tab" aria-controls="nav-html" aria-selected="true" v-if="message.HTML" ref="navhtml"
-					v-on:click="resizeIFrames()">
-					HTML
-				</button>
-				<button class="nav-link" id="nav-html-source-tab" data-bs-toggle="tab" data-bs-target="#nav-html-source"
-					type="button" role="tab" aria-controls="nav-html-source" aria-selected="false" v-if="message.HTML">
-					HTML <span class="d-sm-none">Src</span><span class="d-none d-sm-inline">Source</span>
-				</button>
+				<template v-if="message.HTML">
+					<div class="btn-group">
+						<button class="nav-link" id="nav-html-tab" data-bs-toggle="tab" data-bs-target="#nav-html"
+							type="button" role="tab" aria-controls="nav-html" aria-selected="true" ref="navhtml"
+							v-on:click="resizeIFrames()">
+							HTML
+						</button>
+						<button type="button" class="nav-link dropdown-toggle dropdown-toggle-split d-sm-none"
+							data-bs-toggle="dropdown" aria-expanded="false" data-bs-reference="parent">
+							<span class="visually-hidden">Toggle Dropdown</span>
+						</button>
+						<div class="dropdown-menu">
+							<button class="dropdown-item" data-bs-toggle="tab" data-bs-target="#nav-html-source"
+								type="button" role="tab" aria-controls="nav-html-source" aria-selected="false">
+								HTML Source
+							</button>
+						</div>
+					</div>
+					<button class="nav-link d-none d-sm-inline" id="nav-html-source-tab" data-bs-toggle="tab"
+						data-bs-target="#nav-html-source" type="button" role="tab" aria-controls="nav-html-source"
+						aria-selected="false">
+						HTML <span class="d-sm-none">Src</span><span class="d-none d-sm-inline">Source</span>
+					</button>
+				</template>
+
 				<button class="nav-link" id="nav-plain-text-tab" data-bs-toggle="tab" data-bs-target="#nav-plain-text"
 					type="button" role="tab" aria-controls="nav-plain-text" aria-selected="false"
 					:class="message.HTML == '' ? 'show' : ''">
@@ -366,13 +362,49 @@ export default {
 					role="tab" aria-controls="nav-raw" aria-selected="false">
 					Raw
 				</button>
-				<button class="nav-link position-relative" id="nav-html-check-tab" data-bs-toggle="tab"
-					data-bs-target="#nav-html-check" type="button" role="tab" aria-controls="nav-html" aria-selected="false"
-					v-if="!uiConfig.DisableHTMLCheck && message.HTML != ''" @click="showMobileButtons = false">
-					<span class="d-none d-sm-inline">HTML</span> Check
-					<span class="position-absolute top-10 start-100 translate-middle badge rounded-pill p-1"
-						:class="htmlScoreColor" v-if="htmlScore !== false">
+				<div class="dropdown d-lg-none">
+					<button class="nav-link dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+						Checks
+					</button>
+					<ul class="dropdown-menu">
+						<li>
+							<button class="dropdown-item" id="nav-html-check-tab" data-bs-toggle="tab"
+								data-bs-target="#nav-html-check" type="button" role="tab" aria-controls="nav-html"
+								aria-selected="false" v-if="!uiConfig.DisableHTMLCheck && message.HTML != ''">
+								HTML Check
+								<span class="badge rounded-pill p-1" :class="htmlScoreColor" v-if="htmlScore !== false">
+									<small>{{ Math.floor(htmlScore) }}%</small>
+								</span>
+							</button>
+						</li>
+						<li>
+							<button class="dropdown-item" id="nav-link-check-tab" data-bs-toggle="tab"
+								data-bs-target="#nav-link-check" type="button" role="tab" aria-controls="nav-link-check"
+								aria-selected="false">
+								Link Check
+								<i class="bi bi-check-all text-success" v-if="linkCheckErrors === 0"></i>
+								<span class="badge rounded-pill bg-danger" v-else-if="linkCheckErrors > 0">
+									<small>{{ formatNumber(linkCheckErrors) }}</small>
+								</span>
+							</button>
+						</li>
+					</ul>
+				</div>
+				<button class="d-none d-lg-inline-block nav-link position-relative" id="nav-html-check-tab"
+					data-bs-toggle="tab" data-bs-target="#nav-html-check" type="button" role="tab" aria-controls="nav-html"
+					aria-selected="false" v-if="!uiConfig.DisableHTMLCheck && message.HTML != ''">
+					HTML Check
+					<span class="badge rounded-pill p-1" :class="htmlScoreColor" v-if="htmlScore !== false">
 						<small>{{ Math.floor(htmlScore) }}%</small>
+					</span>
+				</button>
+				<button class="d-none d-lg-inline-block nav-link" id="nav-link-check-tab" data-bs-toggle="tab"
+					data-bs-target="#nav-link-check" type="button" role="tab" aria-controls="nav-link-check"
+					aria-selected="false">
+					Link Check
+					<i class="bi bi-check-all text-success" v-if="linkCheckErrors === 0"></i>
+					<span class="badge rounded-pill bg-danger" v-else-if="linkCheckErrors > 0">
+						<small>{{ formatNumber(linkCheckErrors) }}</small>
 					</span>
 				</button>
 
@@ -398,11 +430,6 @@ export default {
 				<Attachments v-if="allAttachments(message).length" :message="message"
 					:attachments="allAttachments(message)"></Attachments>
 			</div>
-			<div class="tab-pane fade" id="nav-html-check" role="tabpanel" aria-labelledby="nav-html-check-tab"
-				tabindex="0">
-				<HTMLCheck v-if="!uiConfig.DisableHTMLCheck && message.HTML != ''" :message="message"
-					@setHtmlScore="(n) => htmlScore = n" @set-badge-style="(v) => htmlScoreColor = v" />
-			</div>
 			<div class="tab-pane fade" id="nav-html-source" role="tabpanel" aria-labelledby="nav-html-source-tab"
 				tabindex="0" v-if="message.HTML">
 				<pre><code class="language-html">{{ message.HTML }}</code></pre>
@@ -419,6 +446,15 @@ export default {
 			<div class="tab-pane fade" id="nav-raw" role="tabpanel" aria-labelledby="nav-raw-tab" tabindex="0">
 				<iframe v-if="srcURI" :src="srcURI" v-on:load="initRawIframe" frameborder="0"
 					style="width: 100%; height: 300px"></iframe>
+			</div>
+			<div class="tab-pane fade" id="nav-html-check" role="tabpanel" aria-labelledby="nav-html-check-tab"
+				tabindex="0">
+				<HTMLCheck v-if="!uiConfig.DisableHTMLCheck && message.HTML != ''" :message="message"
+					@setHtmlScore="(n) => htmlScore = n" @set-badge-style="(v) => htmlScoreColor = v" />
+			</div>
+			<div class="tab-pane fade" id="nav-link-check" role="tabpanel" aria-labelledby="nav-html-check-tab"
+				tabindex="0">
+				<LinkCheck :message="message" @setLinkErrors="(n) => linkCheckErrors = n" />
 			</div>
 		</div>
 	</div>
